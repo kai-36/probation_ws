@@ -30,6 +30,8 @@ setup(
             'minimal_subscriber = probation_bringup.minimal_subscriber:main',
             'service_member_function = probation_bringup.service_member_function:main',
             'client_member_function = probation_bringup.client_member_function:main',
+            'task_publisher = probation_bringup.task_publisher:main',
+            'task_subscriber = probation_bringup.task_subscriber:main'
         ],
     },
 )
