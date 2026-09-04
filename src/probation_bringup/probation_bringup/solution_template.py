@@ -50,11 +50,11 @@ class GateNavigator(Node):
         self.timer = self.create_timer(timer_period, self.vel_cmd_publisher_callback)
 
         # subscriber to bounding box
-        # self.subscription = self.create_subscription(
-        #     BoundingBoxArray,
-        #     '/main_camera/detection/bounding_boxes',
-        #     self.camera_listener_callback,
-        #     10)
+        self.subscription = self.create_subscription(
+            BoundingBoxArray,
+            '/main_camera/detection/bounding_boxes',
+            self.camera_listener_callback,
+            10)
 
         # subscriber to rel_alt
         self.subscription = self.create_subscription(
@@ -82,7 +82,7 @@ class GateNavigator(Node):
                 self.get_logger().warn(f'Mode change to {self.mode} failed.')
 
         except Exception as e:
-            self.get_logger().error(f'Mode change service call failed: {e}')
+            self.get_logger().heading_error(f'Mode change service call failed: {e}')
 
     def vel_cmd_publisher_callback(self):
         
@@ -96,12 +96,13 @@ class GateNavigator(Node):
 
     def camera_listener_callback(self, msg):
 
-        gate_detected = False
+        if self.operation != self.NAVIGATING:
+            return
 
         bounding_boxes = msg.bounding_boxes
 
         if not bounding_boxes:
-            self.get_logger().info("None")
+            self.get_logger().info("No objects detected")
             return
 
         for box in bounding_boxes:
@@ -109,27 +110,11 @@ class GateNavigator(Node):
             # if gate
             if box.label_id == 3:
 
-                self.get_logger().info(
-                    f"\nC: ({box.x}, {box.y})\n"
-                    f"W: {box.w}\n"
-                    f"H: {box.h}\n"
-                    f"conf: {box.conf}\n"
-                    f"name: {box.label_name}"
-                )
-
-                gate_detected = True
-
-                # reset 
-                self.gateless_frames = 0
-
                 self.generate_cmd(box)
 
             else:
-                self.get_logger().info("Obstacle")
-
-        if not gate_detected:
-
-            self.gateless_frames += 1
+                # self.get_logger().info("Obstacle")
+                pass
 
     def alt_listener_callback(self, msg):
 
@@ -140,23 +125,43 @@ class GateNavigator(Node):
 
         if self.altitude > TARGET_ALT:
 
-            prev_operation = self.operation
-            self.operation = self.DESCENDING
-
-            if prev_operation != self.operation:
-                self.get_logger().info(f"Operation: {prev_operation} -> {self.operation}")
+            if self.operation != self.DESCENDING:
+                self.get_logger().info(f"Operation: {self.operation} -> {self.DESCENDING}")
+                self.operation = self.DESCENDING
 
             vel_cmd = Twist()
             vel_cmd.linear.z = DESCENDING_VEL
 
             self.vel_cmd = vel_cmd
 
-        elif self.operation == self.DESCENDING:
-            self.operation = self.STANDBY
-            self.get_logger().info(f"Operation: {self.DESCENDING} -> {self.operation}")
+        elif self.operation == self.DESCENDING or self.operation == self.STANDBY:
+            
+            self.get_logger().info(f"Operation: {self.operation} -> {self.NAVIGATING}")
+            self.operation = self.NAVIGATING
+            self.vel_cmd = Twist()
+        
 
     def generate_cmd(self, box):    
-        pass
+
+        HEADING_ERROR_TOL = 0.05
+        FRAME_CENTER_X = 0.5
+        YAW_SPEED = 0.5
+        direction = 1
+        
+        heading_error = box.x - FRAME_CENTER_X
+
+        if heading_error > 0:
+            direction = -1
+
+        self.get_logger().info(f"heading_error: {heading_error}")
+        if abs(heading_error) > HEADING_ERROR_TOL:
+  
+            self.vel_cmd = Twist()
+            self.vel_cmd.angular.z = direction*YAW_SPEED
+
+        else:
+            self.vel_cmd = Twist()
+        
 
 
 def main(args=None):
